@@ -1,0 +1,102 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      security-events: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Extract version from pyproject.toml
+      run: |
+        VERSION=$(grep -m1 '^version\s*=' pyproject.toml | cut -d'"' -f2)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        version: latest
+    
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Lowercase repository name
+      run: echo "REPOSITORY_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: Containerfile
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: |
+          ghcr.io/${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}:${{ env.VERSION }}
+          ghcr.io/${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}:${{ github.sha }}
+          ghcr.io/${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Scan image with Trivy
+      if: github.event_name != 'pull_request'
+      uses: aquasecurity/trivy-action@v0.36.0
+      with:
+        image-ref: 'ghcr.io/${{ github.repository_owner }}/${{ env.REPOSITORY_NAME }}:${{ env.VERSION }}'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        ignore-unfixed: true
+        severity: 'HIGH,CRITICAL'
+    
+    - name: Upload Trivy scan results
+      if: github.event_name != 'pull_request'
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  create-release:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      id-token: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Lowercase repository name
+      run: echo "REPOSITORY_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+    
+    - name: Extract version from pyproject.toml
+      run: |
+        VERSION=$(grep -m1 '^version\s*=' pyproject.toml | cut -d'"' -f2)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+    - name: Generate GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ env.VERSION }}
+        tag_name: ${{ env.VERSION }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true

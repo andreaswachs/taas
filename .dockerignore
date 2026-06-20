@@ -1,0 +1,72 @@
+# Generated files
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local test files
+test_*_local.py
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Docker build artifacts
+dist/
+
+# Audio cache
+audio/
+
+# Model cache
+models/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Log files
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+
+# Temp files
+*~
+*.bak
+*.tmp
+
+# OS-specific
+Thumbs.db
+
+# Python
+build/
+develop-eggs/
+pip-wheel-packages/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Documentation
+docs/_build/
+
+# Test and coverage
+htmlcov/
+.coverage
+.nox/
+.pytest_cache/
+
+# CI/CD
+.vscode/
+.idea/

@@ -1,0 +1,29 @@
+services:
+  tts:
+    build:
+      context: .
+      dockerfile: Containerfile
+    
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_PATH=/var/lib/taas-db/tasks.db
+      - AUDIO_OUTPUT_DIR=/var/lib/taas-audio
+      - MODEL_CACHE_DIR=/var/lib/taas-models
+      - KITTEN_MODEL=${KITTEN_MODEL:-KittenML/kitten-tts-mini-0.8}
+      - MAX_WORKERS=${MAX_WORKERS:-5}
+      - MAX_QUEUE_DEPTH=${MAX_QUEUE_DEPTH:-1000}
+      - MAX_TEXT_LENGTH=${MAX_TEXT_LENGTH:-64000}
+      - AUDIO_TTL_HOURS=${AUDIO_TTL_HOURS:-12}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEFAULT_VOICE=${DEFAULT_VOICE:-Leo}
+      - SAMPLE_RATE=${SAMPLE_RATE:-24000}
+      - AUDIO_FORMAT=${AUDIO_FORMAT:-wav}
+      - HF_HOME=/var/lib/taas-models
+    volumes:
+      - taas-db:/var/lib/taas-db
+      - taas-audio:/var/lib/taas-audio
+
+volumes:
+  taas-db:
+  taas-audio:
