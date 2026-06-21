@@ -100,8 +100,10 @@ class TaskQueueManagerWithWorkers:
     
     async def initialize(self) -> None:
         logger.info("Initializing task queue manager", extra={"max_workers": self.max_workers})
+        Path(self.task_queue.db_path).parent.mkdir(parents=True, exist_ok=True)
         await self.task_queue.initialize()
         self.audio_output_dir.mkdir(parents=True, exist_ok=True)
+        await self.cleanup_audio_files()
     
     async def start_workers(self) -> None:
         if self.is_running:

@@ -1,71 +1,43 @@
-# Multi-stage build for optimal size and performance
-FROM python:3.11-slim AS base
+FROM python:3.11-slim-bookworm AS builder
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
-    ffmpeg \
+    libsndfile1 ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app directory
 WORKDIR /app
-
-# First stage: install dependencies
-FROM base AS dependencies
 COPY pyproject.toml uv.lock* ./
-
-RUN pip install --no-cache-dir uv && \
-    uv sync --no-install-project
-
-# Second stage: copy application code and build
-FROM dependencies AS builder
+RUN pip install --no-cache-dir uv && uv sync --no-install-project
 COPY src/ ./src/
 COPY README.md ./
-
-# Install the application
 RUN uv sync
 
-# Final stage: runtime image
-FROM base AS runtime
+# Create empty data directories for nonroot ownership in final stage
+RUN mkdir -p /data/var/lib/taas-db /data/var/lib/taas-audio /data/var/lib/taas-models
 
-# Copy dependencies from builder
-COPY --from=dependencies /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-COPY --from=builder /app/.venv/ /app/.venv/
+# Collect FFmpeg binary and shared libraries for libsndfile + ffmpeg
+RUN LIB_DIR=$(find /usr/lib -maxdepth 1 -type d -name '*-linux-gnu*' | head -1) && \
+    mkdir -p /runtime-root/usr/bin && \
+    cp /usr/bin/ffmpeg /runtime-root/usr/bin/ && \
+    ldd /usr/bin/ffmpeg $LIB_DIR/libsndfile.so 2>/dev/null | \
+    grep -oP '/usr/lib/[^ ]+' | sort -u | \
+    while read lib; do cp -d --parents "$lib" /runtime-root/ 2>/dev/null || true; done
 
-# Copy application source
-COPY src/ /app/src/
-COPY scripts/ /app/scripts/
+FROM gcr.io/distroless/python3-debian12:nonroot
 
-# Set up environment
-ENV PYTHONDONTWRITEBYTECODE=1 \
+COPY --from=builder --chown=65532:65532 /app/.venv/lib/python3.11/site-packages /app/site-packages
+COPY --from=builder /runtime-root/usr/bin/ffmpeg /usr/bin/ffmpeg
+COPY --from=builder /runtime-root/usr/lib/ /usr/lib/
+COPY --chown=65532:65532 src/ /app/src/
+COPY --chown=65532:65532 scripts/ /app/scripts/
+COPY --chown=65532:65532 log_config.json /app/log_config.json
+COPY --chown=65532:65532 API.md /app/API.md
+COPY --from=builder --chown=65532:65532 /data/var/lib/ /var/lib/
+
+ENV PYTHONPATH="/app/site-packages:/app" \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    PATH="/app/.venv/bin:$PATH" \
     HF_HOME=/var/lib/taas-models
-
-# Create data directories for SQLite DB, audio, and model cache
-RUN mkdir -p /var/lib/taas-db /var/lib/taas-audio /var/lib/taas-models
-
-# Copy entrypoint script
-COPY entrypoint.sh /app/entrypoint.sh
-COPY log_config.json /app/log_config.json
-RUN chmod +x /app/entrypoint.sh
-
-# User for security
-RUN addgroup --system --gid 1001 appgroup && \
-    adduser --system --uid 1001 --gid 1001 appuser && \
-    chown -R appuser:appgroup /var/lib/taas-db /var/lib/taas-audio /var/lib/taas-models
-
-# Switch to non-root user
-USER appuser
-
-WORKDIR /app
 
 EXPOSE 8000
 
-# Health check endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run the application using the entrypoint script
-CMD ["/app/entrypoint.sh"]
+CMD ["-m", "uvicorn", "src.main:create_app", "--host", "0.0.0.0", "--port", "8000", "--factory", "--log-config", "/app/log_config.json"]
