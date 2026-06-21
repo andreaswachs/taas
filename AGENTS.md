@@ -10,6 +10,16 @@
 
 The container build is the final gate — it catches missing files, broken imports, and dependency issues that local checks miss. If the image doesn't build, don't commit.
 
+### Version Bumping
+
+Bump `pyproject.toml` `version` field before committing. Use semver:
+
+- **Patch** (`0.1.x`): bugfixes, minor tweaks, dependency bumps with no API change
+- **Minor** (`0.x.0`): new features, refactors that change behavior, infra changes (e.g. base image migration)
+- **Major** (`x.0.0`): breaking API changes
+
+If you built and tested the container, also push the tag: `git tag <version> && git push --tags`. Docker Hub / CI may need it.
+
 ## Quick Commands
 
 ```bash
@@ -26,7 +36,7 @@ make dev            # Docker compose up --build
 - **Tests are in root**: `test_comprehensive.py` at repo root, not in `tests/` (which is empty). CI runs: `python3 -m pytest test_comprehensive.py -v`.
 - **KittenTTS wheel**: Installed from GitHub release URL, not PyPI. Check `pyproject.toml` for version.
 - **Docker build uses `Containerfile`**, not `Dockerfile`. The `compose.yaml` references it.
-- **Entrypoint runs workers via lifespan**: Don't start workers separately in Docker; `src/main.py` handles it via `TaskQueueManagerWithWorkers`.
+- **Entrypoint runs workers via lifespan**: Don't start workers separately in Docker; `src/main.py` handles it via `TaskQueueManagerWithWorkers`. No entrypoint script — the distroless image CMD starts uvicorn directly.
 
 ## Architecture
 
