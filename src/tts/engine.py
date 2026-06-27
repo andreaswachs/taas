@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -31,6 +32,10 @@ class KittenTTSModelWrapper:
     def __init__(self):
         self._model = None
         self._lock = asyncio.Lock()
+        # Threading lock to serialize KittenTTS inference calls.
+        # KittenTTS's internal espeak-ng phonemizer is not thread-safe,
+        # so concurrent model.generate() calls corrupt global state.
+        self._inference_lock = threading.Lock()
     
     async def get_model(self) -> any:
         if self._model is None:
@@ -44,6 +49,20 @@ class KittenTTSModelWrapper:
                     logger.info("KittenTTS model loaded", extra={"model": settings.kitten_model})
         
         return self._model
+    
+    def _generate_locked(self, text: str, voice: str, speed: float, clean_text: bool):
+        """Run model.generate() under the inference lock.
+        
+        Must be called inside asyncio.to_thread() so the lock acquisition
+        happens in the worker thread, avoiding event-loop blocking.
+        """
+        with self._inference_lock:
+            return self._model.generate(
+                text,
+                voice=voice,
+                speed=speed,
+                clean_text=clean_text
+            )
     
     async def generate_with_format(
         self, 
@@ -61,13 +80,13 @@ class KittenTTSModelWrapper:
             },
         )
         
-        model = await self.get_model()
+        await self.get_model()
         task_id = str(uuid.uuid4())
         
         start_time = time.time()
         
         audio_array = await asyncio.to_thread(
-            model.generate,
+            self._generate_locked,
             payload.text,
             voice=payload.voice,
             speed=payload.speed,
@@ -105,10 +124,10 @@ class KittenTTSModelWrapper:
     ) -> str:
         logger.info("Generating TTS to file", extra={"task_id": task_id, "file_path": str(file_path)})
         
-        model = await self.get_model()
+        await self.get_model()
         
         audio_array = await asyncio.to_thread(
-            model.generate,
+            self._generate_locked,
             payload.text,
             voice=payload.voice,
             speed=payload.speed,
@@ -162,13 +181,13 @@ class KittenTTSModelWrapper:
     ) -> GenerationResult:
         logger.info("Starting progress-based TTS generation", extra={"text_preview": payload.text[:100]})
         
-        model = await self.get_model()
+        await self.get_model()
         task_id = str(uuid.uuid4())
         start_time = time.time()
         
         try:
             audio_array = await asyncio.to_thread(
-                model.generate,
+                self._generate_locked,
                 payload.text,
                 voice=payload.voice,
                 speed=payload.speed,
