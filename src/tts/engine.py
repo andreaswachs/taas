@@ -80,7 +80,7 @@ class KittenTTSModelWrapper:
             },
         )
         
-        model = await self.get_model()
+        await self.get_model()
         task_id = str(uuid.uuid4())
         
         start_time = time.time()
@@ -124,7 +124,7 @@ class KittenTTSModelWrapper:
     ) -> str:
         logger.info("Generating TTS to file", extra={"task_id": task_id, "file_path": str(file_path)})
         
-        model = await self.get_model()
+        await self.get_model()
         
         audio_array = await asyncio.to_thread(
             self._generate_locked,
@@ -181,7 +181,7 @@ class KittenTTSModelWrapper:
     ) -> GenerationResult:
         logger.info("Starting progress-based TTS generation", extra={"text_preview": payload.text[:100]})
         
-        model = await self.get_model()
+        await self.get_model()
         task_id = str(uuid.uuid4())
         start_time = time.time()
         
