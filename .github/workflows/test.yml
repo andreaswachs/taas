@@ -24,7 +24,7 @@ jobs:
       run: uv sync --frozen
     
     - name: Run tests
-      run: python3 -m pytest test_comprehensive.py -v
+      run: uv run pytest test_comprehensive.py tests/ -v
     
     - name: Lint code
       run: uv run ruff check src/
